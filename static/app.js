@@ -3,6 +3,8 @@ const taskForm = document.querySelector("#task-form");
 const taskList = document.querySelector("#task-list");
 const memberPanel = document.querySelector("#household-panel");
 const memberList = document.querySelector("#member-list");
+const tagsPanel = document.querySelector("#tags-panel");
+const tagList = document.querySelector("#tag-list");
 const notice = document.querySelector("#notice");
 const dueAlertPanel = document.querySelector("#due-alerts");
 const dueAlertList = document.querySelector("#due-alert-list");
@@ -10,9 +12,19 @@ let currentStatus = "open";
 let currentPage = 1;
 let currentTasks = [];
 let members = [];
+let tags = [];
 let noticeTimer;
 const ALERT_WINDOW_MS = 60 * 60 * 1000;
 const TASKS_PER_PAGE = 10;
+const AVATAR_OPTIONS = ["🙂", "😀", "😎", "🤓", "🥰", "😁", "😴", "🤗"];
+
+function populateAvatarOptions(select, selected = AVATAR_OPTIONS[0]) {
+  select.replaceChildren();
+  AVATAR_OPTIONS.forEach((avatar) => select.append(new Option(avatar, avatar)));
+  select.value = selected;
+}
+
+populateAvatarOptions(document.querySelector("#member-avatar"));
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -53,12 +65,14 @@ function resetTaskForm() {
 function openTaskForm(task = null) {
   taskPanel.hidden = false;
   memberPanel.hidden = true;
+  tagsPanel.hidden = true;
   resetTaskForm();
   if (task) {
     document.querySelector("#task-id").value = task.id;
     document.querySelector("#task-title").value = task.title;
     document.querySelector("#task-assignee").value = task.assigned_to;
     document.querySelector("#task-due").value = task.due_at;
+    document.querySelector("#task-tag").value = task.tag_id || "";
     document.querySelector("#task-details").value = task.details;
     document.querySelector("#task-form-heading").textContent = "Edit task";
     document.querySelector("#save-task-button").textContent = "Save changes";
@@ -119,8 +133,8 @@ function renderDueAlerts(tasks) {
   dueSoon.forEach((task) => {
     const item = document.createElement("li");
     const title = document.createElement("strong");
-    title.textContent = task.title;
-    item.append(title, document.createTextNode(` — ${task.assignee}, due ${formatDue(task.due_at)}`));
+    title.textContent = `${task.assignee_avatar} ${task.title}`;
+    item.append(title, document.createTextNode(` — due ${formatDue(task.due_at)}`));
     dueAlertList.append(item);
   });
 }
@@ -154,7 +168,11 @@ function createTaskCard(task) {
   meta.className = "task-meta";
   const assignee = document.createElement("span");
   assignee.className = "assignee-chip";
-  assignee.textContent = task.assignee;
+  const avatar = document.createElement("span");
+  avatar.className = "assignee-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  avatar.textContent = task.assignee_avatar;
+  assignee.append(avatar, document.createTextNode(task.assignee));
   const due = document.createElement("time");
   due.className = "due-date";
   due.dateTime = task.due_at;
@@ -162,6 +180,12 @@ function createTaskCard(task) {
   const remaining = new Date(task.due_at).getTime() - Date.now();
   if (!task.completed && remaining < 0) due.classList.add("overdue");
   meta.append(assignee, due);
+  if (task.tag) {
+    const tag = document.createElement("span");
+    tag.className = "task-tag-chip";
+    tag.textContent = task.tag;
+    meta.append(tag);
+  }
   if (!task.completed && remaining > 0 && remaining <= ALERT_WINDOW_MS) {
     const alert = document.createElement("span");
     alert.className = "due-soon-chip";
@@ -203,8 +227,10 @@ async function loadTasks() {
     const filters = new URLSearchParams({ status: currentStatus });
     const dueDate = document.querySelector("#filter-due-date").value;
     const assignee = document.querySelector("#filter-assignee").value;
+    const tagId = document.querySelector("#filter-tag").value;
     if (dueDate) filters.set("due_on", dueDate);
     if (assignee) filters.set("assigned_to", assignee);
+    if (tagId) filters.set("tag_id", tagId);
     const [tasks, openTasks] = await Promise.all([
       api(`/api/tasks?${filters}`),
       api("/api/tasks?status=open"),
@@ -247,6 +273,9 @@ async function loadMembers() {
     if (members.some((member) => String(member.id) === selectedFilter)) {
       filter.value = selectedFilter;
     }
+    const avatar = document.querySelector("#member-avatar");
+    const selectedAvatar = avatar.value;
+    populateAvatarOptions(avatar, selectedAvatar);
     renderMembers();
   } catch (error) {
     showNotice(error.message);
@@ -261,11 +290,19 @@ function renderMembers() {
     const field = document.createElement("label");
     field.className = "field member-name";
     const caption = document.createElement("span");
-    caption.textContent = "Name";
+    caption.textContent = "Member";
     const input = document.createElement("input");
     input.value = member.name;
     input.maxLength = 40;
     input.setAttribute("aria-label", `Name for ${member.name}`);
+    const avatarField = document.createElement("label");
+    avatarField.className = "field member-avatar-field";
+    const avatarCaption = document.createElement("span");
+    avatarCaption.textContent = "Face";
+    const avatarSelect = document.createElement("select");
+    avatarSelect.setAttribute("aria-label", `Face icon for ${member.name}`);
+    populateAvatarOptions(avatarSelect, member.avatar);
+    avatarField.append(avatarCaption, avatarSelect);
     field.append(caption, input);
     const save = document.createElement("button");
     save.className = "member-action";
@@ -274,7 +311,8 @@ function renderMembers() {
     save.addEventListener("click", async () => {
       try {
         await api(`/api/members/${member.id}`, {
-          method: "PATCH", body: JSON.stringify({ name: input.value }),
+          method: "PATCH",
+          body: JSON.stringify({ name: input.value, avatar: avatarSelect.value }),
         });
         await refreshData();
       } catch (error) {
@@ -295,13 +333,88 @@ function renderMembers() {
         showNotice(error.message);
       }
     });
-    row.append(field, save, remove);
+    row.append(field, avatarField, save, remove);
     memberList.append(row);
+  });
+}
+
+async function loadTags() {
+  try {
+    tags = await api("/api/tags");
+    const taskSelect = document.querySelector("#task-tag");
+    const selectedTaskTag = taskSelect.value;
+    taskSelect.replaceChildren(new Option("No tag", ""));
+    tags.forEach((tag) => taskSelect.append(new Option(tag.name, tag.id)));
+    if (tags.some((tag) => String(tag.id) === selectedTaskTag)) {
+      taskSelect.value = selectedTaskTag;
+    }
+
+    const filter = document.querySelector("#filter-tag");
+    const selectedFilterTag = filter.value;
+    filter.replaceChildren(new Option("Every tag", ""));
+    tags.forEach((tag) => filter.append(new Option(tag.name, tag.id)));
+    if (tags.some((tag) => String(tag.id) === selectedFilterTag)) {
+      filter.value = selectedFilterTag;
+    }
+    renderTags();
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+function renderTags() {
+  tagList.replaceChildren();
+  tags.forEach((tag) => {
+    const row = document.createElement("li");
+    row.className = "tag-row";
+    const field = document.createElement("label");
+    field.className = "field tag-name-field";
+    const caption = document.createElement("span");
+    caption.textContent = "Tag name";
+    const input = document.createElement("input");
+    input.value = tag.name;
+    input.maxLength = 40;
+    input.setAttribute("aria-label", `Name for ${tag.name}`);
+    field.append(caption, input);
+
+    const save = document.createElement("button");
+    save.className = "member-action";
+    save.type = "button";
+    save.textContent = "Save";
+    save.addEventListener("click", async () => {
+      try {
+        await api(`/api/tags/${tag.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: input.value }),
+        });
+        await refreshData();
+      } catch (error) {
+        showNotice(error.message);
+      }
+    });
+
+    const remove = document.createElement("button");
+    remove.className = "member-action remove";
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `Remove ${tag.name}`);
+    remove.addEventListener("click", async () => {
+      if (!window.confirm(`Delete the "${tag.name}" tag?`)) return;
+      try {
+        await api(`/api/tags/${tag.id}`, { method: "DELETE" });
+        await refreshData();
+      } catch (error) {
+        showNotice(error.message);
+      }
+    });
+    row.append(field, save, remove);
+    tagList.append(row);
   });
 }
 
 async function refreshData() {
   await loadMembers();
+  await loadTags();
   await loadTasks();
 }
 
@@ -313,6 +426,9 @@ taskForm.addEventListener("submit", async (event) => {
     details: document.querySelector("#task-details").value,
     assigned_to: Number(document.querySelector("#task-assignee").value),
     due_at: document.querySelector("#task-due").value,
+    tag_id: document.querySelector("#task-tag").value
+      ? Number(document.querySelector("#task-tag").value)
+      : null,
   };
   try {
     await api(id ? `/api/tasks/${id}` : "/api/tasks", {
@@ -331,6 +447,7 @@ document.querySelector("#close-task-form").addEventListener("click", () => { tas
 document.querySelector("#cancel-task-form").addEventListener("click", () => { taskPanel.hidden = true; });
 document.querySelector("#household-toggle").addEventListener("click", async () => {
   taskPanel.hidden = true;
+  tagsPanel.hidden = true;
   memberPanel.hidden = !memberPanel.hidden;
   if (!memberPanel.hidden) await loadMembers();
 });
@@ -339,7 +456,34 @@ document.querySelector("#member-form").addEventListener("submit", async (event) 
   event.preventDefault();
   const input = document.querySelector("#member-name");
   try {
-    await api("/api/members", { method: "POST", body: JSON.stringify({ name: input.value }) });
+    await api("/api/members", {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.value,
+        avatar: document.querySelector("#member-avatar").value,
+      }),
+    });
+    input.value = "";
+    await refreshData();
+  } catch (error) {
+    showNotice(error.message);
+  }
+});
+document.querySelector("#tags-toggle").addEventListener("click", async () => {
+  taskPanel.hidden = true;
+  memberPanel.hidden = true;
+  tagsPanel.hidden = !tagsPanel.hidden;
+  if (!tagsPanel.hidden) await loadTags();
+});
+document.querySelector("#close-tags").addEventListener("click", () => { tagsPanel.hidden = true; });
+document.querySelector("#tag-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.querySelector("#tag-name");
+  try {
+    await api("/api/tags", {
+      method: "POST",
+      body: JSON.stringify({ name: input.value }),
+    });
     input.value = "";
     await refreshData();
   } catch (error) {
@@ -362,9 +506,14 @@ document.querySelector("#filter-assignee").addEventListener("change", () => {
   currentPage = 1;
   loadTasks();
 });
+document.querySelector("#filter-tag").addEventListener("change", () => {
+  currentPage = 1;
+  loadTasks();
+});
 document.querySelector("#clear-filters").addEventListener("click", () => {
   document.querySelector("#filter-due-date").value = "";
   document.querySelector("#filter-assignee").value = "";
+  document.querySelector("#filter-tag").value = "";
   currentPage = 1;
   loadTasks();
 });

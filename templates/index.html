@@ -17,6 +17,7 @@
       </div>
       <div class="top-actions">
         <button class="button button-quiet" id="household-toggle" type="button">Household</button>
+        <button class="button button-quiet" id="tags-toggle" type="button">Tags</button>
         <button class="button button-primary" id="new-task-button" type="button">＋ New task</button>
       </div>
     </header>
@@ -40,6 +41,10 @@
           <label class="field">
             <span>Due date and time</span>
             <input id="task-due" name="due_at" type="datetime-local" required>
+          </label>
+          <label class="field">
+            <span>Tag <span class="optional">(optional)</span></span>
+            <select id="task-tag" name="tag_id"></select>
           </label>
           <label class="field field-wide">
             <span>Notes <span class="optional">(optional)</span></span>
@@ -67,7 +72,29 @@
           <span>Add a person</span>
           <input id="member-name" maxlength="40" required placeholder="Name">
         </label>
+        <label class="field member-avatar-field">
+          <span>Face icon</span>
+          <select id="member-avatar"></select>
+        </label>
         <button class="button button-primary" type="submit">Add person</button>
+      </form>
+    </section>
+
+    <section class="panel tags-panel" id="tags-panel" hidden aria-labelledby="tags-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="tags-heading">Task tags</h2>
+          <p class="panel-copy">Create labels for the kinds of tasks your family tracks.</p>
+        </div>
+        <button class="icon-button" id="close-tags" type="button" aria-label="Close tag settings">×</button>
+      </div>
+      <ul class="tag-list" id="tag-list"></ul>
+      <form class="add-tag-form" id="tag-form">
+        <label class="field">
+          <span>Add a tag</span>
+          <input id="tag-name" maxlength="40" required placeholder="e.g. Errands">
+        </label>
+        <button class="button button-primary" type="submit">Add tag</button>
       </form>
     </section>
 
@@ -94,6 +121,12 @@
         <span>Assigned to</span>
         <select id="filter-assignee">
           <option value="">Everyone</option>
+        </select>
+      </label>
+      <label class="field filter-field">
+        <span>Tag</span>
+        <select id="filter-tag">
+          <option value="">Every tag</option>
         </select>
       </label>
       <button class="button button-quiet clear-filters" id="clear-filters" type="button">Clear filters</button>

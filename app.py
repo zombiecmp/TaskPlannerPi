@@ -7,6 +7,9 @@ from flask import Flask, g, jsonify, render_template, request
 
 
 DEFAULT_MEMBERS = ("Me", "Wife", "Son")
+DEFAULT_AVATAR = "🙂"
+AVATAR_OPTIONS = ("🙂", "😀", "😎", "🤓", "🥰", "😁", "😴", "🤗")
+DEFAULT_TAGS = ("Home", "School", "Chores")
 
 
 def create_app(test_config=None):
@@ -39,9 +42,21 @@ def create_app(test_config=None):
 
     def init_db():
         db = get_db()
+        tags_table_existed = (
+            db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags'"
+            ).fetchone()
+            is not None
+        )
         db.executescript(
             """
             CREATE TABLE IF NOT EXISTS members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                avatar TEXT NOT NULL DEFAULT '🙂',
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 created_at TEXT NOT NULL
@@ -63,8 +78,28 @@ def create_app(test_config=None):
         if db.execute("SELECT COUNT(*) FROM members").fetchone()[0] == 0:
             now = _utc_now()
             db.executemany(
-                "INSERT INTO members (name, created_at) VALUES (?, ?)",
-                [(name, now) for name in DEFAULT_MEMBERS],
+                "INSERT INTO members (name, avatar, created_at) VALUES (?, ?, ?)",
+                [(name, DEFAULT_AVATAR, now) for name in DEFAULT_MEMBERS],
+            )
+        if not tags_table_existed:
+            now = _utc_now()
+            db.executemany(
+                "INSERT INTO tags (name, created_at) VALUES (?, ?)",
+                [(name, now) for name in DEFAULT_TAGS],
+            )
+        member_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(members)").fetchall()
+        }
+        if "avatar" not in member_columns:
+            db.execute(
+                "ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT '🙂'"
+            )
+        columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        if "tag_id" not in columns:
+            db.execute(
+                "ALTER TABLE tasks ADD COLUMN tag_id INTEGER REFERENCES tags(id) ON DELETE RESTRICT"
             )
         columns = {
             row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()
@@ -77,6 +112,7 @@ def create_app(test_config=None):
                 WHERE completed = 1 AND completed_at IS NULL
                 """
             )
+        db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_tag_id ON tasks(tag_id)")
         db.commit()
         _cleanup_completed_tasks(db)
 
@@ -90,7 +126,7 @@ def create_app(test_config=None):
     @app.get("/api/members")
     def list_members():
         members = get_db().execute(
-            "SELECT id, name FROM members ORDER BY id"
+            "SELECT id, name, avatar FROM members ORDER BY id"
         ).fetchall()
         return jsonify([dict(member) for member in members])
 
@@ -100,34 +136,54 @@ def create_app(test_config=None):
         name, error = _text_value(data, "name", required=True, max_length=40)
         if error:
             return _error(error)
-        try:
-            db = get_db()
-            cursor = db.execute(
-                "INSERT INTO members (name, created_at) VALUES (?, ?)",
-                (name, _utc_now()),
-            )
-            db.commit()
-        except sqlite3.IntegrityError:
-            return _error("That household member already exists.", 409)
-        return jsonify({"id": cursor.lastrowid, "name": name}), 201
-
-    @app.patch("/api/members/<int:member_id>")
-    def rename_member(member_id):
-        data = _json_body()
-        name, error = _text_value(data, "name", required=True, max_length=40)
+        avatar, error = _avatar_value(data.get("avatar", DEFAULT_AVATAR))
         if error:
             return _error(error)
         try:
             db = get_db()
             cursor = db.execute(
-                "UPDATE members SET name = ? WHERE id = ?", (name, member_id)
+                "INSERT INTO members (name, avatar, created_at) VALUES (?, ?, ?)",
+                (name, avatar, _utc_now()),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return _error("That household member already exists.", 409)
+        return jsonify({"id": cursor.lastrowid, "name": name, "avatar": avatar}), 201
+
+    @app.patch("/api/members/<int:member_id>")
+    def rename_member(member_id):
+        data = _json_body()
+        updates = []
+        values = []
+        if "name" in data:
+            name, error = _text_value(data, "name", required=True, max_length=40)
+            if error:
+                return _error(error)
+            updates.append("name = ?")
+            values.append(name)
+        if "avatar" in data:
+            avatar, error = _avatar_value(data["avatar"])
+            if error:
+                return _error(error)
+            updates.append("avatar = ?")
+            values.append(avatar)
+        if not updates:
+            return _error("Provide a name or face icon to update.")
+        try:
+            db = get_db()
+            values.append(member_id)
+            cursor = db.execute(
+                f"UPDATE members SET {', '.join(updates)} WHERE id = ?", values
             )
             if cursor.rowcount == 0:
                 return _error("Household member not found.", 404)
             db.commit()
         except sqlite3.IntegrityError:
             return _error("That household member already exists.", 409)
-        return jsonify({"id": member_id, "name": name})
+        member = db.execute(
+            "SELECT id, name, avatar FROM members WHERE id = ?", (member_id,)
+        ).fetchone()
+        return jsonify(dict(member))
 
     @app.delete("/api/members/<int:member_id>")
     def delete_member(member_id):
@@ -145,6 +201,63 @@ def create_app(test_config=None):
                 "Reassign or delete this member's tasks before removing them.", 409
             )
         db.execute("DELETE FROM members WHERE id = ?", (member_id,))
+        db.commit()
+        return "", 204
+
+    @app.get("/api/tags")
+    def list_tags():
+        tags = get_db().execute("SELECT id, name FROM tags ORDER BY name").fetchall()
+        return jsonify([dict(tag) for tag in tags])
+
+    @app.post("/api/tags")
+    def create_tag():
+        data = _json_body()
+        name, error = _text_value(data, "name", required=True, max_length=40)
+        if error:
+            return _error(error)
+        try:
+            db = get_db()
+            cursor = db.execute(
+                "INSERT INTO tags (name, created_at) VALUES (?, ?)",
+                (name, _utc_now()),
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return _error("That tag already exists.", 409)
+        return jsonify({"id": cursor.lastrowid, "name": name}), 201
+
+    @app.patch("/api/tags/<int:tag_id>")
+    def rename_tag(tag_id):
+        data = _json_body()
+        name, error = _text_value(data, "name", required=True, max_length=40)
+        if error:
+            return _error(error)
+        try:
+            db = get_db()
+            cursor = db.execute(
+                "UPDATE tags SET name = ? WHERE id = ?", (name, tag_id)
+            )
+            if cursor.rowcount == 0:
+                return _error("Tag not found.", 404)
+            db.commit()
+        except sqlite3.IntegrityError:
+            return _error("That tag already exists.", 409)
+        return jsonify({"id": tag_id, "name": name})
+
+    @app.delete("/api/tags/<int:tag_id>")
+    def delete_tag(tag_id):
+        db = get_db()
+        tag = db.execute("SELECT id FROM tags WHERE id = ?", (tag_id,)).fetchone()
+        if tag is None:
+            return _error("Tag not found.", 404)
+        task_count = db.execute(
+            "SELECT COUNT(*) FROM tasks WHERE tag_id = ?", (tag_id,)
+        ).fetchone()[0]
+        if task_count:
+            return _error(
+                "Remove this tag from its tasks before deleting it.", 409
+            )
+        db.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
         db.commit()
         return "", 204
 
@@ -175,15 +288,23 @@ def create_app(test_config=None):
                 return _error("Due date must use YYYY-MM-DD format.")
             conditions.append("substr(t.due_at, 1, 10) = ?")
             parameters.append(due_on)
+        tag_id = request.args.get("tag_id")
+        if tag_id:
+            if not tag_id.isdigit() or int(tag_id) < 1:
+                return _error("Tag must be a valid tag ID.")
+            conditions.append("t.tag_id = ?")
+            parameters.append(int(tag_id))
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         db = get_db()
         _cleanup_completed_tasks(db)
         tasks = get_db().execute(
             f"""
             SELECT t.id, t.title, t.details, t.assigned_to, m.name AS assignee,
+                   m.avatar AS assignee_avatar, t.tag_id, tags.name AS tag,
                    t.due_at, t.completed, t.completed_at
             FROM tasks AS t
             JOIN members AS m ON m.id = t.assigned_to
+            LEFT JOIN tags ON tags.id = t.tag_id
             {where_clause}
             ORDER BY t.completed ASC, t.due_at ASC, t.id DESC
             """,
@@ -200,18 +321,21 @@ def create_app(test_config=None):
         db = get_db()
         if not _member_exists(db, values["assigned_to"]):
             return _error("Choose a household member that still exists.")
+        if values["tag_id"] is not None and not _tag_exists(db, values["tag_id"]):
+            return _error("Choose a tag that still exists.")
         now = _utc_now()
         cursor = db.execute(
             """
             INSERT INTO tasks
-                (title, details, assigned_to, due_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (title, details, assigned_to, due_at, tag_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 values["title"],
                 values["details"],
                 values["assigned_to"],
                 values["due_at"],
+                values["tag_id"],
                 now,
                 now,
             ),
@@ -232,13 +356,19 @@ def create_app(test_config=None):
             return _error(error)
         if "assigned_to" in data and not _member_exists(db, values["assigned_to"]):
             return _error("Choose a household member that still exists.")
+        if (
+            values["tag_id"] is not None
+            and "tag_id" in data
+            and not _tag_exists(db, values["tag_id"])
+        ):
+            return _error("Choose a tag that still exists.")
         if "completed" in data and not isinstance(data["completed"], bool):
             return _error("Completed must be true or false.")
         completed = int(data.get("completed", existing["completed"]))
         db.execute(
             """
             UPDATE tasks
-            SET title = ?, details = ?, assigned_to = ?, due_at = ?,
+            SET title = ?, details = ?, assigned_to = ?, due_at = ?, tag_id = ?,
                 completed = ?, completed_at = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -247,6 +377,7 @@ def create_app(test_config=None):
                 values["details"],
                 values["assigned_to"],
                 values["due_at"],
+                values["tag_id"],
                 completed,
                 (
                     existing["completed_at"] or _utc_now()
@@ -331,7 +462,22 @@ def _task_values(data, creating, existing=None):
         values["due_at"] = parsed.strftime("%Y-%m-%dT%H:%M")
     else:
         values["due_at"] = existing["due_at"]
+    if "tag_id" in data or creating:
+        tag_id = data.get("tag_id")
+        if tag_id is not None and (
+            isinstance(tag_id, bool) or not isinstance(tag_id, int) or tag_id < 1
+        ):
+            return None, "Choose a valid tag or leave the task untagged."
+        values["tag_id"] = tag_id
+    else:
+        values["tag_id"] = existing["tag_id"]
     return values, None
+
+
+def _avatar_value(value):
+    if not isinstance(value, str) or value not in AVATAR_OPTIONS:
+        return None, "Choose one of the available face icons."
+    return value, None
 
 
 def _member_exists(db, member_id):
@@ -341,13 +487,19 @@ def _member_exists(db, member_id):
     )
 
 
+def _tag_exists(db, tag_id):
+    return db.execute("SELECT 1 FROM tags WHERE id = ?", (tag_id,)).fetchone() is not None
+
+
 def _get_task(db, task_id):
     return db.execute(
         """
         SELECT t.id, t.title, t.details, t.assigned_to, m.name AS assignee,
+               m.avatar AS assignee_avatar, t.tag_id, tags.name AS tag,
                t.due_at, t.completed, t.completed_at
         FROM tasks AS t
         JOIN members AS m ON m.id = t.assigned_to
+        LEFT JOIN tags ON tags.id = t.tag_id
         WHERE t.id = ?
         """,
         (task_id,),
