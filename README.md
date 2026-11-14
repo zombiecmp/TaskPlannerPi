@@ -88,10 +88,40 @@ Confirm the service reports `active (running)` and the app opens at `http://127.
 
 ### Launch Chromium in kiosk mode
 
-In the automatically logged-in desktop session's autostart settings, add this command:
+The app's systemd service starts Flask. Chromium should start separately from the logged-in desktop user's autostart configuration. In a terminal on the Pi desktop, check which desktop session is active:
 
 ```bash
-chromium --kiosk --noerrdialogs --disable-infobars --no-first-run http://127.0.0.1:5000
+echo $XDG_CURRENT_DESKTOP
 ```
 
-Some Raspberry Pi OS images name the executable `chromium-browser`; use the installed command name. Reboot the Pi and confirm the planner starts on the touchscreen. The app database is in `instance/task_planner.sqlite3`; it persists across reboots. Back it up somewhere other than the Pi's SD card before replacing the project or SD card. Completed-task cleanup is automatic, so export or back up anything you want to keep before its seven-day retention window ends. Keep the app on a trusted home network: it intentionally has no login or authorization, and its port should not be exposed to the internet.
+If the session reports `labwc` (common on newer Raspberry Pi OS Desktop releases), create or edit the labwc autostart file:
+
+```bash
+mkdir -p ~/.config/labwc
+nano ~/.config/labwc/autostart
+```
+
+Add this command, then save with Ctrl+O, Enter and exit with Ctrl+X:
+
+```bash
+#!/bin/sh
+sleep 10
+chromium --kiosk --noerrdialogs --disable-infobars --no-first-run http://127.0.0.1:5000 &
+```
+
+The delay gives the planner service time to start before Chromium opens.
+
+For an older LXDE desktop session, create or edit its autostart file instead:
+
+```bash
+mkdir -p ~/.config/lxsession/LXDE-pi
+nano ~/.config/lxsession/LXDE-pi/autostart
+```
+
+Add this line:
+
+```text
+@chromium --kiosk --noerrdialogs --disable-infobars --no-first-run http://127.0.0.1:5000
+```
+
+Some Raspberry Pi OS images name the browser command `chromium-browser`; use that instead if `chromium` is not found. Reboot the Pi and confirm the planner starts on the touchscreen. The app database is in `instance/task_planner.sqlite3`; it persists across reboots. Back it up somewhere other than the Pi's SD card before replacing the project or SD card. Completed-task cleanup is automatic, so export or back up anything you want to keep before its seven-day retention window ends. Keep the app on a trusted home network: it intentionally has no login or authorization, and its port should not be exposed to the internet.
