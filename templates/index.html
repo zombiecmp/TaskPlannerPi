@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ef">
+  <title>Our Family Tasks</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OUR HOME</p>
+        <h1>Family tasks</h1>
+      </div>
+      <div class="top-actions">
+        <button class="button button-quiet" id="household-toggle" type="button">Household</button>
+        <button class="button button-primary" id="new-task-button" type="button">＋ New task</button>
+      </div>
+    </header>
+
+    <section class="panel form-panel" id="task-panel" hidden aria-labelledby="task-form-heading">
+      <div class="panel-heading">
+        <h2 id="task-form-heading">Create a task</h2>
+        <button class="icon-button" id="close-task-form" type="button" aria-label="Close task form">×</button>
+      </div>
+      <form id="task-form">
+        <input id="task-id" type="hidden">
+        <div class="form-grid">
+          <label class="field field-wide">
+            <span>What needs doing?</span>
+            <input id="task-title" name="title" maxlength="120" required placeholder="e.g. Pack school bag">
+          </label>
+          <label class="field">
+            <span>Who is doing it?</span>
+            <select id="task-assignee" name="assigned_to" required></select>
+          </label>
+          <label class="field">
+            <span>Due date and time</span>
+            <input id="task-due" name="due_at" type="datetime-local" required>
+          </label>
+          <label class="field field-wide">
+            <span>Notes <span class="optional">(optional)</span></span>
+            <textarea id="task-details" name="details" maxlength="2000" rows="2" placeholder="Anything else to remember?"></textarea>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="button button-primary" id="save-task-button" type="submit">Add task</button>
+          <button class="button button-quiet" id="cancel-task-form" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel household-panel" id="household-panel" hidden aria-labelledby="household-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="household-heading">Your household</h2>
+          <p class="panel-copy">Add people or rename the starter members.</p>
+        </div>
+        <button class="icon-button" id="close-household" type="button" aria-label="Close household settings">×</button>
+      </div>
+      <ul class="member-list" id="member-list"></ul>
+      <form class="add-member-form" id="member-form">
+        <label class="field">
+          <span>Add a person</span>
+          <input id="member-name" maxlength="40" required placeholder="Name">
+        </label>
+        <button class="button button-primary" type="submit">Add person</button>
+      </form>
+    </section>
+
+    <section class="overview" aria-label="Task overview">
+      <div>
+        <p class="eyebrow">A LITTLE PROGRESS, EVERY DAY</p>
+        <h2 id="welcome-heading">Let's get things done.</h2>
+      </div>
+      <p class="task-count" id="task-count"></p>
+    </section>
+
+    <nav class="filter-tabs" aria-label="Filter tasks">
+      <button class="filter-tab active" data-status="open" type="button">To do</button>
+      <button class="filter-tab" data-status="done" type="button">Completed</button>
+      <button class="filter-tab" data-status="all" type="button">All tasks</button>
+    </nav>
+
+    <section class="task-filters" aria-label="Filter tasks by due date and assignee">
+      <label class="field filter-field">
+        <span>Due on</span>
+        <input id="filter-due-date" type="date">
+      </label>
+      <label class="field filter-field">
+        <span>Assigned to</span>
+        <select id="filter-assignee">
+          <option value="">Everyone</option>
+        </select>
+      </label>
+      <button class="button button-quiet clear-filters" id="clear-filters" type="button">Clear filters</button>
+    </section>
+
+    <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+    <section class="alert-banner" id="due-alerts" aria-live="polite" hidden>
+      <div class="alert-heading">
+        <span class="alert-icon" aria-hidden="true">!</span>
+        <h2>Due within the next hour</h2>
+      </div>
+      <ul id="due-alert-list"></ul>
+    </section>
+    <section class="task-list" id="task-list" aria-live="polite" aria-label="Tasks"></section>
+    <nav class="pagination" id="pagination" aria-label="Task list pages" hidden>
+      <button class="button button-quiet page-button" id="previous-page" type="button">← Previous</button>
+      <span class="page-indicator" id="page-indicator" aria-live="polite"></span>
+      <button class="button button-quiet page-button" id="next-page" type="button">Next →</button>
+    </nav>
+  </main>
+</body>
+</html>
