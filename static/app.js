@@ -16,15 +16,48 @@ let tags = [];
 let noticeTimer;
 const ALERT_WINDOW_MS = 60 * 60 * 1000;
 const TASKS_PER_PAGE = 10;
-const AVATAR_OPTIONS = ["🙂", "😀", "😎", "🤓", "🥰", "😁", "😴", "🤗"];
+const AVATAR_OPTIONS = [
+  { key: "happy", label: "Happy" },
+  { key: "grin", label: "Big smile" },
+  { key: "cool", label: "Cool" },
+  { key: "glasses", label: "Glasses" },
+  { key: "love", label: "Love" },
+  { key: "sleepy", label: "Sleepy" },
+  { key: "surprised", label: "Surprised" },
+  { key: "wink", label: "Wink" },
+];
 
-function populateAvatarOptions(select, selected = AVATAR_OPTIONS[0]) {
+function populateAvatarOptions(select, selected = AVATAR_OPTIONS[0].key) {
   select.replaceChildren();
-  AVATAR_OPTIONS.forEach((avatar) => select.append(new Option(avatar, avatar)));
-  select.value = selected;
+  AVATAR_OPTIONS.forEach(({ key, label }) => {
+    select.append(new Option(label, key));
+  });
+  select.value = AVATAR_OPTIONS.some(({ key }) => key === selected)
+    ? selected
+    : AVATAR_OPTIONS[0].key;
 }
 
-populateAvatarOptions(document.querySelector("#member-avatar"));
+function createAvatarImage(key, className = "avatar-image") {
+  const image = document.createElement("img");
+  const avatar = AVATAR_OPTIONS.find((option) => option.key === key) || AVATAR_OPTIONS[0];
+  image.className = className;
+  image.src = `/static/avatars/${avatar.key}.svg`;
+  image.alt = `${avatar.label} face`;
+  image.width = 32;
+  image.height = 32;
+  return image;
+}
+
+const newMemberAvatar = document.querySelector("#member-avatar");
+populateAvatarOptions(newMemberAvatar);
+document.querySelector("#member-avatar-preview").append(
+  createAvatarImage(newMemberAvatar.value)
+);
+newMemberAvatar.addEventListener("change", () => {
+  document.querySelector("#member-avatar-preview").replaceChildren(
+    createAvatarImage(newMemberAvatar.value)
+  );
+});
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -132,9 +165,10 @@ function renderDueAlerts(tasks) {
   dueAlertPanel.hidden = dueSoon.length === 0;
   dueSoon.forEach((task) => {
     const item = document.createElement("li");
+    item.append(createAvatarImage(task.assignee_avatar, "alert-avatar"));
     const title = document.createElement("strong");
-    title.textContent = `${task.assignee_avatar} ${task.title}`;
-    item.append(title, document.createTextNode(` — due ${formatDue(task.due_at)}`));
+    title.textContent = task.title;
+    item.append(title, document.createTextNode(` — ${task.assignee}, due ${formatDue(task.due_at)}`));
     dueAlertList.append(item);
   });
 }
@@ -168,11 +202,10 @@ function createTaskCard(task) {
   meta.className = "task-meta";
   const assignee = document.createElement("span");
   assignee.className = "assignee-chip";
-  const avatar = document.createElement("span");
-  avatar.className = "assignee-avatar";
-  avatar.setAttribute("aria-hidden", "true");
-  avatar.textContent = task.assignee_avatar;
-  assignee.append(avatar, document.createTextNode(task.assignee));
+  assignee.append(
+    createAvatarImage(task.assignee_avatar, "assignee-avatar"),
+    document.createTextNode(task.assignee)
+  );
   const due = document.createElement("time");
   due.className = "due-date";
   due.dateTime = task.due_at;
@@ -276,6 +309,9 @@ async function loadMembers() {
     const avatar = document.querySelector("#member-avatar");
     const selectedAvatar = avatar.value;
     populateAvatarOptions(avatar, selectedAvatar);
+    document.querySelector("#member-avatar-preview").replaceChildren(
+      createAvatarImage(avatar.value)
+    );
     renderMembers();
   } catch (error) {
     showNotice(error.message);
@@ -302,7 +338,16 @@ function renderMembers() {
     const avatarSelect = document.createElement("select");
     avatarSelect.setAttribute("aria-label", `Face icon for ${member.name}`);
     populateAvatarOptions(avatarSelect, member.avatar);
-    avatarField.append(avatarCaption, avatarSelect);
+    const avatarPreview = createAvatarImage(member.avatar);
+    avatarSelect.addEventListener("change", () => {
+      avatarPreview.src = `/static/avatars/${avatarSelect.value}.svg`;
+      avatarPreview.alt = `${AVATAR_OPTIONS.find((option) => option.key === avatarSelect.value).label} face`;
+    });
+    avatarField.append(
+      avatarCaption,
+      avatarPreview,
+      avatarSelect
+    );
     field.append(caption, input);
     const save = document.createElement("button");
     save.className = "member-action";

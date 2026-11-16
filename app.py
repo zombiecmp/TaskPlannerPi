@@ -7,8 +7,27 @@ from flask import Flask, g, jsonify, render_template, request
 
 
 DEFAULT_MEMBERS = ("Me", "Wife", "Son")
-DEFAULT_AVATAR = "🙂"
-AVATAR_OPTIONS = ("🙂", "😀", "😎", "🤓", "🥰", "😁", "😴", "🤗")
+DEFAULT_AVATAR = "happy"
+AVATAR_OPTIONS = (
+    "happy",
+    "grin",
+    "cool",
+    "glasses",
+    "love",
+    "sleepy",
+    "surprised",
+    "wink",
+)
+LEGACY_AVATARS = {
+    "🙂": "happy",
+    "😀": "grin",
+    "😎": "cool",
+    "🤓": "glasses",
+    "🥰": "love",
+    "😁": "surprised",
+    "😴": "sleepy",
+    "🤗": "wink",
+}
 DEFAULT_TAGS = ("Home", "School", "Chores")
 
 
@@ -53,7 +72,7 @@ def create_app(test_config=None):
             CREATE TABLE IF NOT EXISTS members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                avatar TEXT NOT NULL DEFAULT '🙂',
+                avatar TEXT NOT NULL DEFAULT 'happy',
                 created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS tags (
@@ -92,8 +111,17 @@ def create_app(test_config=None):
         }
         if "avatar" not in member_columns:
             db.execute(
-                "ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT '🙂'"
+                "ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT 'happy'"
             )
+        for legacy_avatar, avatar_key in LEGACY_AVATARS.items():
+            db.execute(
+                "UPDATE members SET avatar = ? WHERE avatar = ?",
+                (avatar_key, legacy_avatar),
+            )
+        db.execute(
+            "UPDATE members SET avatar = ? WHERE avatar NOT IN (?, ?, ?, ?, ?, ?, ?, ?)",
+            (DEFAULT_AVATAR, *AVATAR_OPTIONS),
+        )
         columns = {
             row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()
         }

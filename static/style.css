@@ -174,7 +174,9 @@ h2 { margin-bottom: 0; font-size: 1.2rem; letter-spacing: -.025em; }
 .task-details { margin: 0 0 8px; color: var(--muted); font-size: .9rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-meta { flex-wrap: wrap; gap: 7px 12px; color: var(--muted); font-size: .82rem; }
 .assignee-chip { padding: 4px 9px; border-radius: 20px; color: var(--green-dark); background: var(--green-light); font-weight: 700; }
-.assignee-avatar { margin-right: 5px; font-size: 1.05rem; vertical-align: -1px; }
+.avatar-image { display: block; width: 32px; height: 32px; object-fit: contain; }
+.assignee-avatar { width: 24px; height: 24px; margin-right: 5px; }
+.alert-avatar { display: inline-block; width: 26px; height: 26px; margin-right: 7px; vertical-align: middle; }
 .task-tag-chip { padding: 4px 9px; border-radius: 20px; color: #5a4c78; background: #eee9f6; font-weight: 700; }
 .due-date.overdue { color: #a64636; font-weight: 750; }
 .due-soon-chip { padding: 4px 9px; border-radius: 20px; color: #8d4a19; background: #fff0d9; font-weight: 800; }
@@ -210,6 +212,9 @@ h2 { margin-bottom: 0; font-size: 1.2rem; letter-spacing: -.025em; }
 .member-name input { min-height: 42px; }
 .member-avatar-field { width: 105px; }
 .member-avatar-field select { min-height: 42px; padding: 7px; }
+.member-avatar-field > .avatar-image { width: 36px; height: 36px; }
+.new-avatar-preview { display: flex; min-height: 36px; align-items: center; }
+.new-avatar-preview .avatar-image { width: 36px; height: 36px; }
 .member-action { min-width: 44px; padding: 0 10px; color: #62675f; background: #efefe9; }
 .member-action:hover { background: #e4e5dc; }
 .member-action.remove:hover { color: #a64636; background: #fae9e5; }

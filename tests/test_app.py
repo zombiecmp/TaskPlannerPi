@@ -59,10 +59,10 @@ class TaskPlannerTests(unittest.TestCase):
     def test_members_can_be_renamed_and_not_removed_with_tasks(self):
         renamed = self.client.patch(
             f"/api/members/{self.member_id}",
-            json={"name": "Alex", "avatar": "😎"},
+            json={"name": "Alex", "avatar": "cool"},
         )
         self.assertEqual(renamed.get_json()["name"], "Alex")
-        self.assertEqual(renamed.get_json()["avatar"], "😎")
+        self.assertEqual(renamed.get_json()["avatar"], "cool")
         self.create_task()
         self.assertEqual(
             self.client.delete(f"/api/members/{self.member_id}").status_code, 409
@@ -70,10 +70,10 @@ class TaskPlannerTests(unittest.TestCase):
 
     def test_member_face_icon_validation(self):
         created = self.client.post(
-            "/api/members", json={"name": "Sam", "avatar": "🤗"}
+            "/api/members", json={"name": "Sam", "avatar": "wink"}
         )
         self.assertEqual(created.status_code, 201)
-        self.assertEqual(created.get_json()["avatar"], "🤗")
+        self.assertEqual(created.get_json()["avatar"], "wink")
         invalid = self.client.post(
             "/api/members", json={"name": "Invalid", "avatar": "not-an-icon"}
         )
@@ -162,10 +162,47 @@ class TaskPlannerTests(unittest.TestCase):
         member = migrated_client.get("/api/members").get_json()[0]
         task = migrated_client.get("/api/tasks?status=all").get_json()[0]
         self.assertEqual(member["name"], "Alex")
-        self.assertEqual(member["avatar"], "🙂")
+        self.assertEqual(member["avatar"], "happy")
         self.assertEqual(task["title"], "Old task")
         self.assertIsNone(task["tag_id"])
         self.assertIsNone(task["tag"])
+
+    def test_existing_emoji_avatars_are_migrated_to_svg_keys(self):
+        database = str(Path(self.temp_dir.name) / "emoji.sqlite3")
+        with sqlite3.connect(database) as db:
+            db.executescript(
+                """
+                CREATE TABLE members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    avatar TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO members (id, name, avatar, created_at)
+                VALUES (1, 'Alex', '😎', '2026-01-01T00:00:00+00:00');
+                """
+            )
+
+        migrated_app = create_app({"TESTING": True, "DATABASE": database})
+        member = migrated_app.test_client().get("/api/members").get_json()[0]
+        self.assertEqual(member["avatar"], "cool")
+
+    def test_local_avatar_assets_are_served_as_svg(self):
+        for avatar in (
+            "happy",
+            "grin",
+            "cool",
+            "glasses",
+            "love",
+            "sleepy",
+            "surprised",
+            "wink",
+        ):
+            with self.subTest(avatar=avatar):
+                response = self.client.get(f"/static/avatars/{avatar}.svg")
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("image/svg+xml", response.content_type)
+                response.close()
 
     def test_filter_tasks_by_due_date_and_assignee(self):
         other_member = self.client.post(
