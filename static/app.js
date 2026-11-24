@@ -5,6 +5,9 @@ const memberPanel = document.querySelector("#household-panel");
 const memberList = document.querySelector("#member-list");
 const tagsPanel = document.querySelector("#tags-panel");
 const tagList = document.querySelector("#tag-list");
+const messagePanel = document.querySelector("#message-panel");
+const messageForm = document.querySelector("#message-form");
+const messageList = document.querySelector("#message-list");
 const notice = document.querySelector("#notice");
 const dueAlertPanel = document.querySelector("#due-alerts");
 const dueAlertList = document.querySelector("#due-alert-list");
@@ -13,6 +16,7 @@ let currentPage = 1;
 let currentTasks = [];
 let members = [];
 let tags = [];
+let messages = [];
 let noticeTimer;
 const ALERT_WINDOW_MS = 60 * 60 * 1000;
 const TASKS_PER_PAGE = 10;
@@ -99,6 +103,7 @@ function openTaskForm(task = null) {
   taskPanel.hidden = false;
   memberPanel.hidden = true;
   tagsPanel.hidden = true;
+  messagePanel.hidden = true;
   resetTaskForm();
   if (task) {
     document.querySelector("#task-id").value = task.id;
@@ -112,6 +117,20 @@ function openTaskForm(task = null) {
   }
   taskPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   document.querySelector("#task-title").focus({ preventScroll: true });
+}
+
+function openMessageForm() {
+  taskPanel.hidden = true;
+  memberPanel.hidden = true;
+  tagsPanel.hidden = true;
+  messagePanel.hidden = false;
+  messageForm.reset();
+  const selectedRecipient = document.querySelector("#message-filter-recipient").value;
+  if (members.some((member) => String(member.id) === selectedRecipient)) {
+    document.querySelector("#message-recipient").value = selectedRecipient;
+  }
+  messagePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.querySelector("#message-content").focus({ preventScroll: true });
 }
 
 function formatDue(value) {
@@ -171,6 +190,87 @@ function renderDueAlerts(tasks) {
     item.append(title, document.createTextNode(` — ${task.assignee}, due ${formatDue(task.due_at)}`));
     dueAlertList.append(item);
   });
+}
+
+function renderMessages() {
+  messageList.replaceChildren();
+  const unreadCount = messages.filter((message) => !message.is_read).length;
+  document.querySelector("#message-count").textContent = `${unreadCount} unread`;
+  if (!messages.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state message-empty-state";
+    const title = document.createElement("strong");
+    title.textContent = `No messages for ${document.querySelector("#message-filter-recipient").selectedOptions[0]?.textContent || "this person"} yet.`;
+    const description = document.createElement("span");
+    description.textContent = "Leave a note to brighten someone's day.";
+    empty.append(title, description);
+    messageList.append(empty);
+    return;
+  }
+  messages.forEach((message) => {
+    const card = document.createElement("article");
+    card.className = `message-card${message.is_read ? " is-read" : ""}`;
+    const copy = document.createElement("div");
+    copy.className = "message-copy";
+    const heading = document.createElement("div");
+    heading.className = "message-meta";
+    heading.append(
+      createAvatarImage(message.sender_avatar, "message-avatar"),
+      document.createTextNode(`From ${message.sender} · ${new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(message.created_at))}`)
+    );
+    const status = document.createElement("span");
+    status.className = "message-status";
+    status.textContent = message.is_read ? "Read" : "New";
+    heading.append(status);
+    const content = document.createElement("p");
+    content.className = "message-content";
+    content.textContent = message.content;
+    copy.append(heading, content);
+
+    const action = document.createElement("button");
+    action.className = message.is_read ? "button button-quiet message-action" : "button button-primary message-action";
+    action.type = "button";
+    action.textContent = message.is_read ? "Dismiss" : "Mark as read";
+    action.setAttribute(
+      "aria-label",
+      message.is_read ? `Dismiss message from ${message.sender}` : `Mark message from ${message.sender} as read`
+    );
+    action.addEventListener("click", async () => {
+      try {
+        if (message.is_read) {
+          await api(`/api/messages/${message.id}`, { method: "DELETE" });
+        } else {
+          await api(`/api/messages/${message.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ is_read: true }),
+          });
+        }
+        await loadMessages();
+      } catch (error) {
+        showNotice(error.message);
+      }
+    });
+    card.append(copy, action);
+    messageList.append(card);
+  });
+}
+
+async function loadMessages() {
+  const recipientId = document.querySelector("#message-filter-recipient").value;
+  if (!recipientId) {
+    messages = [];
+    renderMessages();
+    return;
+  }
+  try {
+    messages = await api(`/api/messages?recipient_id=${encodeURIComponent(recipientId)}`);
+    renderMessages();
+  } catch (error) {
+    showNotice(error.message);
+  }
 }
 
 function createTaskCard(task) {
@@ -287,6 +387,19 @@ async function updateTask(id, changes) {
 async function loadMembers() {
   try {
     members = await api("/api/members");
+    [
+      ["#message-sender", members[0]?.id],
+      ["#message-recipient", members[0]?.id],
+      ["#message-filter-recipient", members[0]?.id],
+    ].forEach(([selector, fallback]) => {
+      const select = document.querySelector(selector);
+      const selected = select.value;
+      select.replaceChildren();
+      members.forEach((member) => select.append(new Option(member.name, member.id)));
+      select.value = members.some((member) => String(member.id) === selected)
+        ? selected
+        : String(fallback || "");
+    });
     const select = document.querySelector("#task-assignee");
     const selected = select.value;
     select.replaceChildren();
@@ -461,7 +574,29 @@ async function refreshData() {
   await loadMembers();
   await loadTags();
   await loadTasks();
+  await loadMessages();
 }
+
+messageForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const recipientId = Number(document.querySelector("#message-recipient").value);
+  try {
+    await api("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        sender_id: Number(document.querySelector("#message-sender").value),
+        recipient_id: recipientId,
+        content: document.querySelector("#message-content").value,
+      }),
+    });
+    document.querySelector("#message-filter-recipient").value = String(recipientId);
+    messagePanel.hidden = true;
+    messageForm.reset();
+    await loadMessages();
+  } catch (error) {
+    showNotice(error.message);
+  }
+});
 
 taskForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -488,11 +623,30 @@ taskForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelector("#new-task-button").addEventListener("click", () => openTaskForm());
+document.querySelector("#messages-toggle").addEventListener("click", openMessageForm);
+document.querySelectorAll(".emotion-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    const textarea = document.querySelector("#message-content");
+    const emotion = button.dataset.emotion;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const updated = `${textarea.value.slice(0, start)}${emotion}${textarea.value.slice(end)}`;
+    if (updated.length > textarea.maxLength) return;
+    textarea.value = updated;
+    textarea.focus();
+    const caret = start + emotion.length;
+    textarea.setSelectionRange(caret, caret);
+  });
+});
+document.querySelector("#close-message-form").addEventListener("click", () => { messagePanel.hidden = true; });
+document.querySelector("#cancel-message-form").addEventListener("click", () => { messagePanel.hidden = true; });
+document.querySelector("#message-filter-recipient").addEventListener("change", loadMessages);
 document.querySelector("#close-task-form").addEventListener("click", () => { taskPanel.hidden = true; });
 document.querySelector("#cancel-task-form").addEventListener("click", () => { taskPanel.hidden = true; });
 document.querySelector("#household-toggle").addEventListener("click", async () => {
   taskPanel.hidden = true;
   tagsPanel.hidden = true;
+  messagePanel.hidden = true;
   memberPanel.hidden = !memberPanel.hidden;
   if (!memberPanel.hidden) await loadMembers();
 });
@@ -517,6 +671,7 @@ document.querySelector("#member-form").addEventListener("submit", async (event) 
 document.querySelector("#tags-toggle").addEventListener("click", async () => {
   taskPanel.hidden = true;
   memberPanel.hidden = true;
+  messagePanel.hidden = true;
   tagsPanel.hidden = !tagsPanel.hidden;
   if (!tagsPanel.hidden) await loadTags();
 });
@@ -577,5 +732,8 @@ document.querySelector("#next-page").addEventListener("click", () => {
 
 refreshData();
 window.setInterval(() => {
-  if (document.visibilityState === "visible") loadTasks();
+  if (document.visibilityState === "visible") {
+    loadTasks();
+    loadMessages();
+  }
 }, 60_000);

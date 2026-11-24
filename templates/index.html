@@ -16,11 +16,51 @@
         <h1>Family tasks</h1>
       </div>
       <div class="top-actions">
+        <button class="button button-quiet" id="messages-toggle" type="button">＋ Message</button>
         <button class="button button-quiet" id="household-toggle" type="button">Household</button>
         <button class="button button-quiet" id="tags-toggle" type="button">Tags</button>
         <button class="button button-primary" id="new-task-button" type="button">＋ New task</button>
       </div>
     </header>
+
+    <section class="panel message-form-panel" id="message-panel" hidden aria-labelledby="message-form-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="message-form-heading">Leave a message</h2>
+          <p class="panel-copy">Send a kind note to someone in your household.</p>
+        </div>
+        <button class="icon-button" id="close-message-form" type="button" aria-label="Close message form">×</button>
+      </div>
+      <form id="message-form">
+        <div class="form-grid">
+          <label class="field">
+            <span>From</span>
+            <select id="message-sender" required></select>
+          </label>
+          <label class="field">
+            <span>To</span>
+            <select id="message-recipient" required></select>
+          </label>
+          <label class="field field-wide">
+            <span>Your message</span>
+            <textarea id="message-content" maxlength="2000" rows="3" required placeholder="I love you."></textarea>
+            <span class="emotion-picker" role="group" aria-label="Add an emotion">
+              <button class="emotion-button" type="button" data-emotion="❤️" aria-label="Add heart" title="Add heart">❤️</button>
+              <button class="emotion-button" type="button" data-emotion="😊" aria-label="Add smile" title="Add smile">😊</button>
+              <button class="emotion-button" type="button" data-emotion="😍" aria-label="Add love eyes" title="Add love eyes">😍</button>
+              <button class="emotion-button" type="button" data-emotion="😂" aria-label="Add laughter" title="Add laughter">😂</button>
+              <button class="emotion-button" type="button" data-emotion="🤗" aria-label="Add hug" title="Add hug">🤗</button>
+              <button class="emotion-button" type="button" data-emotion="👍" aria-label="Add thumbs up" title="Add thumbs up">👍</button>
+              <button class="emotion-button" type="button" data-emotion="🌟" aria-label="Add star" title="Add star">🌟</button>
+            </span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Leave message</button>
+          <button class="button button-quiet" id="cancel-message-form" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
 
     <section class="panel form-panel" id="task-panel" hidden aria-labelledby="task-form-heading">
       <div class="panel-heading">
@@ -105,6 +145,21 @@
         <h2 id="welcome-heading">Let's get things done.</h2>
       </div>
       <p class="task-count" id="task-count"></p>
+    </section>
+
+    <section class="messages-section" aria-labelledby="messages-heading">
+      <div class="messages-heading">
+        <div>
+          <p class="eyebrow">A NOTE FOR SOMEONE AT HOME</p>
+          <h2 id="messages-heading">Messages</h2>
+        </div>
+        <label class="field message-recipient-filter">
+          <span>Show messages for</span>
+          <select id="message-filter-recipient"></select>
+        </label>
+        <p class="message-count" id="message-count" aria-live="polite"></p>
+      </div>
+      <section class="message-list" id="message-list" aria-live="polite" aria-label="Messages"></section>
     </section>
 
     <nav class="filter-tabs" aria-label="Filter tasks">

@@ -83,6 +83,90 @@ class TaskPlannerTests(unittest.TestCase):
         )
         self.assertEqual(invalid_update.status_code, 400)
 
+    def test_messages_can_be_left_read_and_dismissed(self):
+        members = self.client.get("/api/members").get_json()
+        recipient = next(member for member in members if member["name"] == "Son")
+        created = self.client.post(
+            "/api/messages",
+            json={
+                "sender_id": self.member_id,
+                "recipient_id": recipient["id"],
+                "content": "I love you.",
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        message = created.get_json()
+        self.assertEqual(message["sender"], "Me")
+        self.assertEqual(message["recipient"], "Son")
+        self.assertEqual(message["content"], "I love you.")
+        self.assertEqual(message["is_read"], 0)
+        self.assertEqual(
+            self.client.get(
+                f"/api/messages?recipient_id={recipient['id']}"
+            ).get_json()[0]["id"],
+            message["id"],
+        )
+        self.assertEqual(
+            self.client.get(f"/api/messages?recipient_id={self.member_id}").get_json(),
+            [],
+        )
+
+        marked_read = self.client.patch(
+            f"/api/messages/{message['id']}", json={"is_read": True}
+        )
+        self.assertEqual(marked_read.status_code, 200)
+        self.assertEqual(marked_read.get_json()["is_read"], 1)
+        self.assertEqual(
+            self.client.delete(f"/api/messages/{message['id']}").status_code, 204
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/messages/{message['id']}").status_code, 404
+        )
+
+    def test_message_validation_and_member_retention(self):
+        members = self.client.get("/api/members").get_json()
+        recipient = next(member for member in members if member["name"] == "Son")
+        invalid = self.client.post(
+            "/api/messages",
+            json={
+                "sender_id": True,
+                "recipient_id": recipient["id"],
+                "content": "Hello",
+            },
+        )
+        self.assertEqual(invalid.status_code, 400)
+        invalid = self.client.post(
+            "/api/messages",
+            json={
+                "sender_id": self.member_id,
+                "recipient_id": recipient["id"],
+                "content": " ",
+            },
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(self.client.get("/api/messages").status_code, 400)
+        self.assertEqual(
+            self.client.get("/api/messages?recipient_id=9999").status_code, 400
+        )
+
+        message = self.client.post(
+            "/api/messages",
+            json={
+                "sender_id": self.member_id,
+                "recipient_id": recipient["id"],
+                "content": "Remember me",
+            },
+        ).get_json()
+        self.assertEqual(
+            self.client.delete(f"/api/members/{recipient['id']}").status_code, 409
+        )
+        self.assertEqual(
+            self.client.patch(
+                f"/api/messages/{message['id']}", json={"is_read": "yes"}
+            ).status_code,
+            400,
+        )
+
     def test_task_tags_can_be_managed_and_assigned(self):
         tag = self.client.post("/api/tags", json={"name": "Errands"})
         self.assertEqual(tag.status_code, 201)

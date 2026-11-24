@@ -104,11 +104,61 @@ h2 { margin-bottom: 0; font-size: 1.2rem; letter-spacing: -.025em; }
 }
 .field textarea { resize: vertical; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgb(46 105 77 / 12%); }
+.emotion-picker { display: flex; flex-wrap: wrap; gap: 7px; }
+.emotion-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  font-size: 1.25rem;
+}
+.emotion-button:hover, .emotion-button:focus-visible { border-color: var(--green); background: var(--green-light); }
 .form-actions { gap: 10px; margin-top: 19px; }
 
 .overview { margin: 39px 0 22px; align-items: flex-end; }
 .overview h2 { font-size: clamp(1.25rem, 3vw, 1.65rem); }
 .task-count { margin: 0 0 2px; color: var(--muted); font-size: .92rem; }
+
+.messages-section { margin: 0 0 26px; }
+.messages-heading {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+.messages-heading h2 { font-size: 1.2rem; }
+.message-recipient-filter { width: min(250px, 35%); margin-left: auto; }
+.message-recipient-filter select { min-height: 43px; padding: 8px 11px; }
+.message-count { margin: 0 0 11px; color: var(--muted); font-size: .9rem; font-weight: 700; }
+.message-list { display: grid; gap: 10px; }
+.message-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid #dfe9df;
+  border-radius: 16px;
+  background: #f7fbf6;
+}
+.message-card.is-read { border-color: var(--line); background: var(--card); }
+.message-copy { min-width: 0; flex: 1; }
+.message-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; }
+.message-avatar { width: 28px; height: 28px; }
+.message-status {
+  padding: 3px 8px;
+  border-radius: 20px;
+  color: var(--green-dark);
+  background: var(--green-light);
+  font-size: .76rem;
+  font-weight: 800;
+}
+.is-read .message-status { color: var(--muted); background: #eeeee8; }
+.message-content { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-action { flex: 0 0 auto; }
+.message-empty { padding: 24px 16px; }
 
 .filter-tabs { gap: 8px; margin-bottom: 17px; }
 .filter-tab {
@@ -240,6 +290,12 @@ h2 { margin-bottom: 0; font-size: 1.2rem; letter-spacing: -.025em; }
   .field-wide { grid-column: auto; }
   .overview { margin-top: 30px; align-items: flex-start; gap: 12px; }
   .task-count { padding-top: 4px; text-align: right; }
+  .messages-heading { align-items: stretch; flex-direction: column; gap: 12px; }
+  .message-recipient-filter { width: 100%; margin-left: 0; }
+  .message-count { margin: 0; }
+  .message-card { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .message-action { align-self: flex-start; }
+  .emotion-button { width: 46px; height: 46px; }
   .filter-tabs { justify-content: space-between; gap: 2px; }
   .filter-tab { min-width: 0; padding: 0 11px; font-size: .88rem; }
   .task-filters { align-items: stretch; flex-direction: column; gap: 12px; }
@@ -271,6 +327,11 @@ h2 { margin-bottom: 0; font-size: 1.2rem; letter-spacing: -.025em; }
   .task-title { font-size: 1.2rem; }
   .task-meta { font-size: 1rem; }
   .task-action { min-width: 52px; min-height: 52px; }
+  .messages-heading h2 { font-size: 1.35rem; }
+  .message-meta { font-size: 1rem; }
+  .message-content { font-size: 1.1rem; }
+  .message-status { font-size: .85rem; }
+  .emotion-button { width: 52px; height: 52px; font-size: 1.4rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

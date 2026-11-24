@@ -90,8 +90,18 @@ def create_app(test_config=None):
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL REFERENCES members(id) ON DELETE RESTRICT,
+                recipient_id INTEGER NOT NULL REFERENCES members(id) ON DELETE RESTRICT,
+                content TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+                created_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
             CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed);
+            CREATE INDEX IF NOT EXISTS idx_messages_recipient
+                ON messages(recipient_id, is_read, created_at);
             """
         )
         if db.execute("SELECT COUNT(*) FROM members").fetchone()[0] == 0:
@@ -224,11 +234,94 @@ def create_app(test_config=None):
         assigned_count = db.execute(
             "SELECT COUNT(*) FROM tasks WHERE assigned_to = ?", (member_id,)
         ).fetchone()[0]
-        if assigned_count:
+        message_count = db.execute(
+            "SELECT COUNT(*) FROM messages WHERE sender_id = ? OR recipient_id = ?",
+            (member_id, member_id),
+        ).fetchone()[0]
+        if assigned_count or message_count:
             return _error(
-                "Reassign or delete this member's tasks before removing them.", 409
+                "Remove this member's tasks and messages before removing them.", 409
             )
         db.execute("DELETE FROM members WHERE id = ?", (member_id,))
+        db.commit()
+        return "", 204
+
+    @app.get("/api/messages")
+    def list_messages():
+        recipient_id = request.args.get("recipient_id")
+        if not recipient_id or not recipient_id.isdigit() or int(recipient_id) < 1:
+            return _error("Choose a valid household member to view messages.")
+        db = get_db()
+        if not _member_exists(db, int(recipient_id)):
+            return _error("Choose a household member that still exists.")
+        messages = db.execute(
+            """
+            SELECT messages.id, messages.sender_id, sender.name AS sender,
+                   sender.avatar AS sender_avatar, messages.recipient_id,
+                   recipient.name AS recipient, messages.content,
+                   messages.is_read, messages.created_at
+            FROM messages
+            JOIN members AS sender ON sender.id = messages.sender_id
+            JOIN members AS recipient ON recipient.id = messages.recipient_id
+            WHERE messages.recipient_id = ?
+            ORDER BY messages.is_read ASC, messages.created_at DESC, messages.id DESC
+            """,
+            (int(recipient_id),),
+        ).fetchall()
+        return jsonify([dict(message) for message in messages])
+
+    @app.post("/api/messages")
+    def create_message():
+        data = _json_body()
+        sender_id = data.get("sender_id")
+        if isinstance(sender_id, bool) or not isinstance(sender_id, int) or sender_id < 1:
+            return _error("Choose a valid household member as the sender.")
+        recipient_id = data.get("recipient_id")
+        if (
+            isinstance(recipient_id, bool)
+            or not isinstance(recipient_id, int)
+            or recipient_id < 1
+        ):
+            return _error("Choose a valid household member as the recipient.")
+        content, error = _text_value(data, "content", required=True, max_length=2000)
+        if error:
+            return _error(error)
+        db = get_db()
+        if not _member_exists(db, sender_id):
+            return _error("Choose a sender that still exists.")
+        if not _member_exists(db, recipient_id):
+            return _error("Choose a recipient that still exists.")
+        cursor = db.execute(
+            """
+            INSERT INTO messages (sender_id, recipient_id, content, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (sender_id, recipient_id, content, _utc_now()),
+        )
+        db.commit()
+        return jsonify(dict(_get_message(db, cursor.lastrowid))), 201
+
+    @app.patch("/api/messages/<int:message_id>")
+    def update_message(message_id):
+        data = _json_body()
+        if "is_read" not in data or not isinstance(data["is_read"], bool):
+            return _error("Read status must be true or false.")
+        db = get_db()
+        cursor = db.execute(
+            "UPDATE messages SET is_read = ? WHERE id = ?",
+            (int(data["is_read"]), message_id),
+        )
+        if cursor.rowcount == 0:
+            return _error("Message not found.", 404)
+        db.commit()
+        return jsonify(dict(_get_message(db, message_id)))
+
+    @app.delete("/api/messages/<int:message_id>")
+    def delete_message(message_id):
+        db = get_db()
+        cursor = db.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+        if cursor.rowcount == 0:
+            return _error("Message not found.", 404)
         db.commit()
         return "", 204
 
@@ -531,6 +624,22 @@ def _get_task(db, task_id):
         WHERE t.id = ?
         """,
         (task_id,),
+    ).fetchone()
+
+
+def _get_message(db, message_id):
+    return db.execute(
+        """
+        SELECT messages.id, messages.sender_id, sender.name AS sender,
+               sender.avatar AS sender_avatar, messages.recipient_id,
+               recipient.name AS recipient, messages.content,
+               messages.is_read, messages.created_at
+        FROM messages
+        JOIN members AS sender ON sender.id = messages.sender_id
+        JOIN members AS recipient ON recipient.id = messages.recipient_id
+        WHERE messages.id = ?
+        """,
+        (message_id,),
     ).fetchone()
 
 
